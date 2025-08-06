@@ -35,9 +35,9 @@ public sealed class User
     [Column("password")]
     public string Password { get; set; }
     
-    [JsonIgnore]
-    [Column("password_salt")]
-    public string PasswordSalt { get; set; }
+    // [JsonIgnore]
+    // [Column("password_salt")]
+    // public string PasswordSalt { get; set; }
     
     [Column("role")] 
     public EUserRole Role { get; set; } = EUserRole.User;

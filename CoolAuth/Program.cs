@@ -1,7 +1,9 @@
 ﻿using System.Text;
 using CoolAuth.Data;
 using CoolAuth.Extensions;
+using CoolAuth.Repositories;
 using CoolAuth.Services;
+using CoolAuth.Services.Abstraction;
 using CoolAuth.Utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -14,11 +16,6 @@ builder.Services.AddRouting(options =>
 {
     options.LowercaseUrls = true;
 });
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = builder.Configuration.GetConnectionString("Redis");
-    options.InstanceName = builder.Configuration.GetValue<string>("Redis:InstanceName");
-});
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
@@ -29,6 +26,11 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
     return ConnectionMultiplexer.Connect(config);
 });
 
+builder.Services.AddScoped<ISessionRepository, SessionRepository>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IAuthService,AuthService>();
+builder.Services.AddScoped<ICacheService,RedisService>();
+builder.Services.AddScoped<JwtService>();
 ConfigureAuthentication(builder);
 app = builder.Build();
 

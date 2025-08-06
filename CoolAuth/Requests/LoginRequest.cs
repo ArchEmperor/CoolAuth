@@ -9,4 +9,5 @@ public class LoginRequest
     [StringLength(128,MinimumLength = 8)]
     public required string Password { get; set; }
     public required bool Remember { get; set; }
+    public string? Fingerprint { get; set; }
 }

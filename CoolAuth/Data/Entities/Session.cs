@@ -52,8 +52,4 @@ public sealed class Session
     
     [Column("last_refresh_at")]
     public long LastRefreshAt { get; set; }
-
-    [Required] 
-    [Column("token_version")]
-    public int TokenVersion { get; set; } = 0;
 }

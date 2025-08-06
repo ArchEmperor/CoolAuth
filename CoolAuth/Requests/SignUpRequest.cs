@@ -13,4 +13,6 @@ public class SignUpRequest
     
     [StringLength(128,MinimumLength = 8)]
     public required string Password { get; init; }
+    
+    public string? Fingerprint { get; set; }
 }

@@ -26,16 +26,18 @@ public class SessionRepository(AppDbContext context): ISessionRepository
             .ToListAsync();
     }
 
-    public async Task AddAsync(Session session)
+    public async Task<Session> AddAsync(Session session)
     {
-        await context.Sessions.AddAsync(session);
+        var result = await context.Sessions.AddAsync(session);
         await context.SaveChangesAsync();
+        return result.Entity;
     }
 
-    public async Task UpdateAsync(Session session)
+    public async Task<Session> UpdateAsync(Session session)
     {
-        context.Sessions.Update(session);
+        var result = context.Sessions.Update(session);
         await context.SaveChangesAsync();
+        return result.Entity;
     }
 
     public async Task DeleteAsync(Guid sessionId)

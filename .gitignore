@@ -1,0 +1,7 @@
+/CoolAuth/Migrations/
+.env*
+.idea
+bin
+obj
+!.env.example
+CoolAuth/Folder.DotSettings.user

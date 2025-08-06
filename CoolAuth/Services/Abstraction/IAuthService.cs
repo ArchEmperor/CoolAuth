@@ -1,13 +1,13 @@
 ﻿using CoolAuth.DTOs;
 using CoolAuth.Requests;
 
-namespace CoolAuth.Services;
+namespace CoolAuth.Services.Abstraction;
 
 public interface IAuthService
 {
-    Task<TokensDTO> LoginAsync(LoginRequest request);
-    Task<TokensDTO> SignUpAsync(SignUpRequest request);
-    Task SignOutAsync(TokensDTO tokens);
-    Task<TokensDTO> RefreshSessionAsync(TokensDTO tokens);
-    Task RevokeAsync(bool all, Guid sessionId, int userId);
+    Task<TokensDTO> LoginAsync(LoginRequest request,SessionConnectionInfoDTO info);
+    public Task<TokensDTO> SignUpAsync(SignUpRequest request, SessionConnectionInfoDTO info);
+    Task SignOutAsync(string refreshToken);
+    public Task<TokensDTO> RefreshSessionAsync(RefreshSessionRequest request,SessionConnectionInfoDTO info);
+    Task RevokeAsync(HttpContext context,bool all=false, Guid? sessionId=null);
 }

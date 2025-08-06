@@ -10,9 +10,9 @@ public interface ISessionRepository
 
     Task<IReadOnlyList<Session>> GetAllSessionsAsync(int userId);
 
-    Task AddAsync(Session session);
+    Task<Session> AddAsync(Session session);
 
-    Task UpdateAsync(Session session);
+    Task<Session> UpdateAsync(Session session);
 
     Task DeleteAsync(Guid sessionId);
 

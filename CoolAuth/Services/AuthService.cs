@@ -1,19 +1,29 @@
-﻿using CoolAuth.Data.Entities;
+﻿using System.Security.Claims;
+using CoolAuth.Data.Entities;
 using CoolAuth.Domain;
 using CoolAuth.DTOs;
 using CoolAuth.Repositories;
 using CoolAuth.Requests;
+using CoolAuth.Services.Abstraction;
 
 namespace CoolAuth.Services;
 
-public class AuthService(UserRepository users, SessionRepository sessions, JwtService jwtAuth) : IAuthService
+public class AuthService(IUserRepository users, ISessionRepository sessions, JwtService jwtService) : IAuthService
 {
-    public Task<TokensDTO> LoginAsync(LoginRequest request)
+    private const int RefreshTokenExtendedLifetime = 7; //days
+    private const int RefreshTokenLifetime = 30;//minutes
+    private const int MaxSessionsAmount = 5;
+    public async Task<TokensDTO> LoginAsync(LoginRequest request,SessionConnectionInfoDTO info)
     {
-        throw new NotImplementedException();
+        var user =await  users.GetByEmailAsync(request.Email);
+        if (user == null||!BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
+        {
+            throw DomainException.InvalidCredentials;
+        }
+        return await CreateNewSession(user,request.Remember,info,request.Fingerprint);
     }
 
-    public async Task<TokensDTO> SignUpAsync(SignUpRequest request)
+    public async Task<TokensDTO> SignUpAsync(SignUpRequest request,SessionConnectionInfoDTO info)
     {
         if (await users.ExistsByEmailAsync(request.Email))
         {
@@ -27,24 +37,119 @@ public class AuthService(UserRepository users, SessionRepository sessions, JwtSe
             Username = request.Username,
             JoinedAt = DateTime.UtcNow,
         });
-        var tokens = jwtAuth.CreateNewSession(user,false);
-            
-        return;
-
+        return await CreateNewSession(user,false,info,request.Fingerprint);
     }
 
-    public Task SignOutAsync(TokensDTO tokens)
+    private async Task<TokensDTO> CreateNewSession(User user,bool extended,SessionConnectionInfoDTO info, string? fingerprint,Guid? sessionId = null)
     {
-        throw new NotImplementedException();
+        var refreshToken = Guid.NewGuid();
+        var expires= extended ? DateTimeOffset.UtcNow.AddDays(RefreshTokenExtendedLifetime) :
+            DateTimeOffset.UtcNow.AddMinutes(RefreshTokenLifetime);
+        
+        var userSessions = await sessions.GetAllSessionsAsync(user.Id);
+        if (userSessions.Count() >= MaxSessionsAmount)
+        {
+            await sessions.DeleteAsync(userSessions.First().SessionId);
+        }
+
+        var tempSession = new Session
+        {
+            ExpiresAt = expires.ToUnixTimeSeconds(),
+            UserId = user.Id,
+            RefreshToken = refreshToken.ToString(),
+            IpAddress = info.IpAddress,
+            UserAgent = info.UserAgent,
+            Fingerprint = fingerprint,
+            Country = info.Country,
+            City = info.City,
+            Latitude = info.Latitude,
+            Longitude = info.Longitude,
+            LastRefreshAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        };
+        if (sessionId != null)
+        {
+            tempSession.SessionId = sessionId.Value;
+        }
+        sessionId= (await sessions.UpdateAsync(tempSession)).SessionId;
+        //     await sessions.UpdateAsync(tempSession);
+        // }
+        // else
+        // {
+        //     sessionId= (await sessions.AddAsync(tempSession)).SessionId;
+        // }
+        
+        
+        var accessToken = jwtService.GenerateAccessToken(new List<Claim>
+        {
+            new("userid",user.Id.ToString()),
+            new ("display_name", user.Username),
+            new("access_role", ((int)user.Role).ToString()),
+            new("email", user.Email),
+            new("remember", extended.ToString()),
+            new("session_id",sessionId.ToString()!)
+        });
+        return new TokensDTO
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken.ToString(),
+        };
+    }
+    
+    public async Task SignOutAsync(string refreshToken)
+    {
+        var session = await sessions.GetByRefreshTokenAsync(refreshToken);
+        if (session==null)
+        {
+            throw DomainException.InvalidAuthToken;
+        }
+        await sessions.DeleteAsync(session.SessionId);
     }
 
-    public Task<TokensDTO> RefreshSessionAsync(TokensDTO tokens)
+    public async Task<TokensDTO> RefreshSessionAsync(RefreshSessionRequest request,SessionConnectionInfoDTO info)
     {
-        throw new NotImplementedException();
+        var accessToken = JwtService.ReadToken(request.AccessToken);
+        if (accessToken == null)
+        {
+            throw DomainException.InvalidAuthToken;
+        }
+
+        if (!Guid.TryParse(accessToken.Payload["session_id"].ToString(), out var sessionId))
+        {
+            throw DomainException.InvalidAuthToken;
+        }
+        var session = await sessions.GetByRefreshTokenAsync(request.RefreshToken);
+        if (session==null ||session.SessionId != sessionId)
+        {
+            throw DomainException.InvalidAuthToken;
+        }
+        await sessions.DeleteAsync(session.SessionId);
+        
+        //Expired
+        if (session.ExpiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+        {
+            throw DomainException.SessionExpired;
+        }
+        var user = await users.GetByIdAsync(session.UserId);
+        if (!Boolean.TryParse(accessToken.Payload["remember"].ToString(), out var remember))
+        {
+            remember = false;
+        }
+        return await CreateNewSession(user!,remember,info,request.Fingerprint,sessionId);
     }
 
-    public Task RevokeAsync(bool all, Guid sessionId, int userId)
+    public async Task RevokeAsync(HttpContext context,bool revokeAll=false, Guid? sessionId=null)
     {
-        throw new NotImplementedException();
+        if (!revokeAll&&sessionId!=null)
+        {
+            await sessions.DeleteAsync(sessionId.Value);
+            return;
+        }
+
+        if (!JwtService.GetUserIdFromHttpContext(context, out var userId))
+        {
+            throw DomainException.InvalidAuthToken;
+        }
+
+        await sessions.DeleteAllSessionsAsync(userId);
     }
 }
