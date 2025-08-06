@@ -1,0 +1,167 @@
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using CoolAuth.Data;
+using CoolAuth.Data.Entities;
+using CoolAuth.DTOs;
+using Microsoft.IdentityModel.Tokens;
+
+namespace CoolAuth.Services;
+
+public sealed class JwtService
+{
+    private const int RefreshTokenExtendedLifetime = 7; //days
+    private const int RefreshTokenLifetime = 30;//minutes
+    /*#if DEBUG
+    private const int AccessTokenLifetime = 200; //minutes
+    #else*/
+    private const int AccessTokenLifetime = 1; //minutes
+    /*#endif*/
+    private const int MaxSessionsAmount = 5;
+    private readonly IConfiguration _config;
+    private readonly AppDbContext _dbContext;
+    public const string UserIdClaimType = "userid";
+    public const string UserRoleClaimType = "access_role";
+        
+    public JwtService(IConfiguration configuration, AppDbContext dbContext)
+    {
+        _config      = configuration;
+        _dbContext   = dbContext;
+    }
+    
+    private string GenerateAccessToken(List<Claim> claims)
+    {
+        var lifeTime = TimeSpan.FromMinutes(AccessTokenLifetime);
+        
+        var key = Encoding.UTF8.GetBytes(_config["JwtSettings:Key"]!);
+
+        var token = new JwtSecurityToken(
+            claims: claims,
+            issuer: _config["JwtSettings:Issuer"],
+            audience: _config["JwtSettings:Audience"],
+            expires: DateTime.UtcNow.Add(lifeTime),
+            notBefore: DateTime.UtcNow,
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256)
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public IOrderedQueryable<Session> GetUserSessions(int id)
+    {
+        return _dbContext.Sessions
+            .Where(o => o.UserId == id)
+            .OrderBy(o => o.ExpiresAt);
+    }
+
+    private TokensDTO _createSession(string accessToken, int userId, bool extended)
+    {
+        var refreshToken = Guid.NewGuid();
+        var expires= extended ? DateTimeOffset.UtcNow.AddDays(RefreshTokenExtendedLifetime) :
+            DateTimeOffset.UtcNow.AddMinutes(RefreshTokenLifetime);
+
+        var sessions = GetUserSessions(userId);
+        
+        if (sessions.Count() >= MaxSessionsAmount)
+        {
+            _dbContext.Sessions.Remove(sessions.First());
+        }
+        
+        _dbContext.Sessions.Add(new Session
+        {
+            ExpiresAt = expires.ToUnixTimeSeconds(),
+            UserId = userId,
+            RefreshToken = refreshToken.ToString(),
+            IpAddress = null,
+        });
+        
+        return new TokensDTO
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken.ToString(),
+        };
+    }
+
+
+    public TokensDTO CreateNewSession(User user,bool extended)
+    {
+        var accessToken = GenerateAccessToken(new List<Claim>
+        {
+            new("userid",user.Id.ToString()),
+            new ("display_name", user.Username),
+            new("access_role", ((int)user.Role).ToString()),
+            new("email", user.Email),
+            new("remember", extended.ToString())
+        });
+        
+        return _createSession(accessToken, user.Id, extended);
+    }
+    
+
+    public void CloseSession(string? refreshToken)
+    {
+        if (refreshToken == null)
+            return;
+        
+        var session = _dbContext.Sessions.FirstOrDefault(o => o.RefreshToken == refreshToken);
+        if (session == null)
+            return;
+        
+        _dbContext.Sessions.Remove(session);
+    }
+    
+    public static bool GetUserIdFromHttpContext(HttpContext context, out int userId)
+    {
+        userId = 0;
+        var userIdClaim = context.User.Claims.FirstOrDefault(o => o.Type == UserIdClaimType);
+        return userIdClaim != null && int.TryParse(userIdClaim.Value, out userId);
+    }
+
+    public TokensDTO? RefreshSession(TokensDTO dto)
+    {
+        var handler = new JwtSecurityTokenHandler();
+        JwtSecurityToken jwtToken;
+        try
+        {
+            jwtToken = handler.ReadJwtToken(dto.AccessToken);
+        }
+        catch
+        {
+            return null;
+        }
+        var payload = jwtToken.Payload;
+        if (!int.TryParse(payload["userid"].ToString(), out var userId))
+            return null;
+        
+        var session = _dbContext.Sessions
+            .FirstOrDefault(o => o.RefreshToken == dto.RefreshToken && o.UserId == userId);
+
+        //Invalid token
+        if (session == null)
+            return null;
+        
+        _dbContext.Sessions.Remove(session);
+        
+        //Expired
+        if (session.ExpiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+        {
+            _dbContext.SaveChanges();
+            Console.WriteLine($"Session expired for user {userId}");
+            return null;
+        }
+        
+        var newAccessToken = GenerateAccessToken(new List<Claim>
+        {
+            new(UserIdClaimType,userId.ToString()),
+            new ("display_name", payload["display_name"].ToString()!),
+            new("access_role", payload["access_role"].ToString()!),
+            new("email", payload["email"].ToString()!),
+            new("remember", payload["remember"].ToString()!)
+        });
+        var tokens = _createSession(newAccessToken, userId, payload.ContainsKey("remember"));
+        _dbContext.SaveChanges();
+
+        return tokens;
+    }
+}
