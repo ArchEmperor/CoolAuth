@@ -1,39 +1,34 @@
-#CoolAuth
-CoolAuth — a clean, production-ready authentication template for ASP.NET Core 9.
-Implements JWT access tokens, refresh tokens, magic links, session caching in Redis, and persistence in PostgreSQL.
-Perfect starting point for secure APIs and microservices.
+# 🔐 CoolAuth
 
-#Highlights
-ASP.NET Core 9 authentication boilerplate.
+CoolAuth — a clean, production-ready authentication template for ASP.NET Core 9. Implements JWT access tokens, refresh tokens, magic links, session caching in Redis, and persistence in PostgreSQL. Perfect starting point for secure APIs and microservices.
 
-Access & Refresh tokens with rotation support.
+## ✨ Highlights
 
-Magic link passwordless login.
+- 🚀 ASP.NET Core 9 authentication boilerplate
+- 🔑 Access & Refresh tokens with rotation support
+- ✉️ Magic link passwordless login
+- ⚡ Redis for fast session lookup and alias keys
+- 🐘 PostgreSQL for persistent user/session storage
+- 🏗️ Clean architecture with DTOs, AutoMapper, and service separation
 
-Redis for fast session lookup and alias keys.
+## 📋 Requirements
 
-PostgreSQL for persistent user/session storage.
+- ⚙️ .NET 9 SDK
+- 🐘 PostgreSQL (≥ 12)
+- 🔴 Redis (≥ 6)
+- 🐳 Docker (optional, recommended for local dev)
 
-Clean architecture with DTOs, AutoMapper, and service separation.
+## 🚀 Quick Start
 
-#Requirements
-.NET 9 SDK
+Clone repository:
+```bash
+git clone https://github.com/ArchEmperor/CoolAuth.git
+cd CoolAuth
+```
 
-PostgreSQL (≥ 12)
-
-Redis (≥ 6)
-
-Docker (optional, recommended for local dev)
-
-#Quick Start
-Clone repository
-git clone https://github.com/your-org/coolauth.git
-cd coolauth
-Copy environment file .env.example to .env and configure
+Create `.env` file and copy template from `.env.example`:
+```bash
 cp .env.example .env
-Edit .env with your Postgres, Redis, and JWT settings.
+```
 
-
-
-
-
+Edit `.env` with your Postgres, Redis, and JWT settings.
