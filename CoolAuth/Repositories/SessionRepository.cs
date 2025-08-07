@@ -1,5 +1,6 @@
 ﻿using CoolAuth.Data;
 using CoolAuth.Data.Entities;
+using CoolAuth.DTO;
 using Microsoft.EntityFrameworkCore;
 
 namespace CoolAuth.Repositories;
@@ -19,10 +20,25 @@ public class SessionRepository(AppDbContext context): ISessionRepository
         return session;
     }
 
-    public async Task<IReadOnlyList<Session>> GetAllSessionsAsync(int userId)
+    public async Task<IReadOnlyList<SessionPartialDto>> GetAllSessionsAsync(int userId)
     {
         return await context.Sessions
             .Where(s => s.UserId == userId)
+            .Select(s => new SessionPartialDto
+            {
+                SessionId = s.SessionId,
+                UserAgent = s.UserAgent,
+                IpAddress = s.IpAddress,
+                ExpiresAt = s.ExpiresAt,
+                LastRefreshAt = s.LastRefreshAt
+            })
+            .ToListAsync();
+    }
+    public async Task<IReadOnlyList<Guid>> GetAllSessionsIdsAsync(int userId)
+    {
+        return await context.Sessions
+            .Where(s => s.UserId == userId)
+            .Select(s => s.SessionId)
             .ToListAsync();
     }
 

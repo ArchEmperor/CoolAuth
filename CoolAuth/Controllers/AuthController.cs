@@ -10,7 +10,7 @@ namespace CoolAuth.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
-    public class AuthController(IDistributedCache cache,IAuthService auth) : ControllerBase
+    public class AuthController(ICacheService cache,IAuthService auth) : ControllerBase
     {
         [HttpPost]
         public async Task<IActionResult> Login([FromBody]LoginRequest  request)
@@ -56,7 +56,15 @@ namespace CoolAuth.Controllers
         public async Task<IActionResult> Revoke(bool all=false,Guid? sessionId=null)
         {
             await auth.RevokeAsync(HttpContext,all,sessionId);
-            return Ok();
+            return NoContent();
+        }
+
+        [HttpGet]
+        [Authorize]
+        public async Task<IActionResult> GetSessions()
+        {
+            var sessions = await auth.GetSessionsAsync(HttpContext);
+            return Ok(sessions);
         }
     }
 }

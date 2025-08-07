@@ -31,6 +31,9 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService,AuthService>();
 builder.Services.AddScoped<ICacheService,RedisService>();
 builder.Services.AddScoped<JwtService>();
+builder.Services.AddAutoMapper(cfg => {
+    cfg.AddProfile<MappingProfile>();
+});
 ConfigureAuthentication(builder);
 app = builder.Build();
 
