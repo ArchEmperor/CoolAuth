@@ -73,9 +73,9 @@ public class SessionRepository(AppDbContext context): ISessionRepository
         await context.SaveChangesAsync();
     }
 
-    public async Task<IReadOnlyList<Session>> GetExpiredAsync(long currentUnixTimeSeconds)
+    public async Task DeleteExpiredSessionsAsync(long currentUnixTimeSeconds)
     {
-        return await context.Sessions.Where(o => 
-            o.ExpiresAt < currentUnixTimeSeconds).ToListAsync();
+        context.Sessions.RemoveRange(context.Sessions.Where(s => s.ExpiresAt > currentUnixTimeSeconds));
+        await context.SaveChangesAsync();
     }
 }

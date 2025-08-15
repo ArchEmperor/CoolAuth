@@ -20,5 +20,5 @@ public interface ISessionRepository
 
     Task DeleteAllSessionsAsync(int userId);
 
-    Task<IReadOnlyList<Session>> GetExpiredAsync(long currentUnixTimeSeconds);
+    Task DeleteExpiredSessionsAsync(long currentUnixTimeSeconds);
 }
