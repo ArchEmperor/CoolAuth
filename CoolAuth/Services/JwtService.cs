@@ -17,7 +17,6 @@ public sealed class JwtService(IConfiguration config)
     /*#endif*/
 
     private const string UserIdClaimType = "userid";
-    private const string UserRoleClaimType = "access_role";
     public string GenerateAccessToken(List<Claim> claims)
     {
         var lifeTime = TimeSpan.FromMinutes(AccessTokenLifetime);

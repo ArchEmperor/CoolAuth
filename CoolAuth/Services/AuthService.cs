@@ -11,14 +11,15 @@ using CoolAuth.Services.Abstraction;
 
 namespace CoolAuth.Services;
 
-public class AuthService(IUserRepository users, ISessionRepository sessions, JwtService jwtService,ICacheService cache,IMapper mapper) : IAuthService
+public class AuthService(IUserRepository users, ISessionRepository sessions, JwtService jwtService, UserSessionCacheService userCache) : IAuthService
 {
     private const int RefreshTokenExtendedLifetime = 7; //days
     private const int RefreshTokenLifetime = 30;//minutes
     private const int MaxSessionsAmount = 5;
     public async Task<TokensDTO> LoginAsync(LoginRequest request,SessionConnectionInfoDTO info)
     {
-        var user =await  users.GetByEmailAsync(request.Email);
+        var user =await userCache.GetCachedUserByEmailAsync(request.Email) ??
+                  await users.GetByEmailAsync(request.Email);
         if (user == null||!BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
         {
             throw DomainException.InvalidCredentials;
@@ -40,19 +41,20 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
             Username = request.Username,
             JoinedAt = DateTime.UtcNow,
         });
+        await userCache.CacheUserAsync(user);
         return await CreateNewSession(user,false,info,request.Fingerprint);
     }
     public async Task SignOutAsync(string refreshToken)
     {
         Session? session = null;
-        session = await GetCachedSessionByToken(refreshToken) ?? 
+        session = await userCache.GetCachedSessionByTokenAsync(refreshToken) ?? 
                   await sessions.GetByRefreshTokenAsync(refreshToken);
         if (session==null)
         {
             throw DomainException.InvalidAuthToken;
         }
         await sessions.DeleteAsync(session.SessionId);
-        await DeleteCachedSession(session.SessionId);
+        await userCache.DeleteCachedSessionAsync(session.SessionId);
     }
 
     public async Task<TokensDTO> RefreshSessionAsync(RefreshSessionRequest request,SessionConnectionInfoDTO info)
@@ -64,7 +66,7 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
         }
 
         Session? session = null;
-        session = await GetCachedSessionByToken(request.RefreshToken) ?? 
+        session = await userCache.GetCachedSessionByTokenAsync(request.RefreshToken) ?? 
                   await sessions.GetByRefreshTokenAsync(request.RefreshToken);
         if (session==null ||session.SessionId != sessionId)
         {
@@ -89,7 +91,7 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
         if (!revokeAll&&sessionId!=null)
         {
             await sessions.DeleteAsync(sessionId.Value);
-            await DeleteCachedSession(sessionId.Value);
+            await userCache.DeleteCachedSessionAsync(sessionId.Value);
             return;
         }
 
@@ -101,7 +103,7 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
         await sessions.DeleteAllSessionsAsync(userId);
         foreach (var id in sessionIds)
         {
-            await DeleteCachedSession(id);
+            await userCache.DeleteCachedSessionAsync(id);
         }
     }
 
@@ -114,50 +116,6 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
         return await sessions.GetAllSessionsAsync(userId);
     }
     
-    private async Task CacheSession(Session session,DateTimeOffset expires)
-    {
-        var dto = mapper.Map<SessionCacheDto>(session);
-
-        var sessionStr = JsonSerializer.Serialize(dto);
-        var refreshTokenKey = $"refresh_token:{session.RefreshToken}";
-        var cacheLifetime = expires - DateTimeOffset.UtcNow;
-
-        await cache.SetAsync(refreshTokenKey, sessionStr, cacheLifetime);
-
-        var aliasKey = $"session:{session.SessionId}";
-        await cache.SetAsync(aliasKey, refreshTokenKey, cacheLifetime);
-    }
-    private async Task DeleteCachedSession(Guid sessionId)
-    {
-        var sessionKey = $"session:{sessionId}";
-        var refreshTokenKey = await cache.GetAsync(sessionKey);
-        if (refreshTokenKey != null)
-        {
-            await cache.RemoveAsync(refreshTokenKey);
-        }
-        await cache.RemoveAsync(sessionKey);
-    }
-    private async Task<Session?> GetCachedSessionById(Guid sessionId)
-    {
-        var aliasKey = $"session:{sessionId}";
-        var refreshTokenStr = await cache.GetAsync(aliasKey);
-
-        if (refreshTokenStr is null) return null;
-        var sessionStr = await cache.GetAsync(refreshTokenStr);
-        if (sessionStr is null) return null;
-        var dto = JsonSerializer.Deserialize<SessionCacheDto>(sessionStr);
-        return dto is not null ? mapper.Map<Session>(dto) : null;
-    }
-
-    private async Task<Session?> GetCachedSessionByToken(string token)
-    {
-        var aliasKey = $"refresh_token:{token}";
-        var sessionStr = await cache.GetAsync(aliasKey);
-
-        if (sessionStr is null) return null;
-        var dto = JsonSerializer.Deserialize<SessionCacheDto>(sessionStr);
-        return dto is not null ? mapper.Map<Session>(dto) : null;
-    }
     private async Task<TokensDTO> CreateNewSession(User user,bool extended,SessionConnectionInfoDTO info, string? fingerprint,Guid? sessionId = null)
     {
         var refreshToken = Guid.NewGuid();
@@ -165,9 +123,9 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
             DateTimeOffset.UtcNow.AddMinutes(RefreshTokenLifetime);
         
         var userSessions = await sessions.GetAllSessionsAsync(user.Id);
-        if (userSessions.Count() >= MaxSessionsAmount)
+        if (userSessions.Count >= MaxSessionsAmount)
         {
-            await sessions.DeleteAsync(userSessions.First().SessionId);
+            await sessions.DeleteAsync(userSessions[0].SessionId);
         }
 
         var tempSession = new Session
@@ -189,13 +147,11 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
             tempSession.SessionId = sessionId.Value;
         }
         var newSession = await sessions.UpdateAsync(tempSession);
-        await CacheSession(newSession, expires);
+        await userCache.CacheSessionAsync(newSession, expires);
         
         var accessToken = jwtService.GenerateAccessToken(new List<Claim>
         {
             new("userid",user.Id.ToString()),
-            new ("display_name", user.Username),
-            new("access_role", ((int)user.Role).ToString()),
             new("email", user.Email),
             new("remember", extended.ToString()),
             new("session_id",newSession.SessionId.ToString()!)

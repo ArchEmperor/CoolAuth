@@ -11,7 +11,7 @@ using StackExchange.Redis;
 
 WebApplication app = null!;
 var builder = WebApplication.CreateBuilder(args);
-Cfg.MapEnvToConfig(builder.Configuration);
+builder.Services.AddEnvironmentVariablesMapper();
 builder.Services.AddRouting(options =>
 {
     options.LowercaseUrls = true;
@@ -31,12 +31,13 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService,AuthService>();
 builder.Services.AddScoped<ICacheService,RedisService>();
 builder.Services.AddScoped<JwtService>();
+builder.Services.AddScoped<UserSessionCacheService>();
 builder.Services.AddAutoMapper(cfg => {
     cfg.AddProfile<MappingProfile>();
 });
 ConfigureAuthentication(builder);
 app = builder.Build();
-
+app.MapEnvironmentVariables();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
