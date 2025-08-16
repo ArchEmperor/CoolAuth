@@ -2,6 +2,7 @@
 using AutoMapper;
 using CoolAuth.Data.Entities;
 using CoolAuth.DTO;
+using CoolAuth.DTOs;
 
 namespace CoolAuth.Services;
 
@@ -60,7 +61,7 @@ public class UserSessionCacheService(IMapper mapper,ICacheService cache)
         await cache.SetAsync(emailAliasKey, userKey, expiry);
     }
 
-    public async Task<User?> GetCachedUserByIdAsync(int userId)
+    public async Task<User?> GetCachedUserByIdAsync(string userId)
     {
         var userKey = $"user:{userId}";
         var userStr = await cache.GetAsync(userKey);
@@ -84,5 +85,21 @@ public class UserSessionCacheService(IMapper mapper,ICacheService cache)
         
         await cache.RemoveAsync(userKey);
         await cache.RemoveAsync(emailAliasKey);
+    }
+
+    public async Task CacheMagicTokenAsync(string token, MagicDTO userInfo,TimeSpan? expiry =null)
+    {
+        var tokenKey = $"magic_token:{token}";
+        var userInfoString = JsonSerializer.Serialize(userInfo);
+        await cache.SetAsync(tokenKey, userInfoString,expiry ?? TimeSpan.FromMinutes(1));
+    }
+
+    public async Task<MagicDTO?> UseMagicTokenAsync(string token)
+    {
+        var tokenKey = $"magic_token:{token}";
+        var magicDtoStr = await cache.GetAsync(tokenKey);
+        if (magicDtoStr is null) return null;
+        await cache.RemoveAsync(tokenKey);
+        return JsonSerializer.Deserialize<MagicDTO>(magicDtoStr);
     }
 }

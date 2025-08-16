@@ -66,5 +66,24 @@ namespace CoolAuth.Controllers
             var sessions = await auth.GetSessionsAsync(HttpContext);
             return Ok(sessions);
         }
+
+        [HttpGet]
+        [Authorize]
+        public async Task<IActionResult> GetMagicLink(bool remember=false)
+        {
+            var token = await auth.GenerateMagicTokenAsync(HttpContext);
+            return Ok(new {token});
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> MagicLinkAuth([FromBody]MagicLoginRequest  request)
+        {
+            var tokens = await auth.MagicLoginAsync(request,new SessionConnectionInfoDTO()
+            {
+                IpAddress = HttpContext.Connection.RemoteIpAddress!,
+                UserAgent = Request.Headers.UserAgent.ToString(),
+            });
+            return Ok(tokens);
+        }
     }
 }

@@ -6,3 +6,8 @@ public class TokensDTO
     public required string RefreshToken { get; set; }
 }
 
+public class MagicDTO
+{
+    public required int UserId { get; set; }
+    public required bool Remember { get; set; }
+}

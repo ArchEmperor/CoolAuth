@@ -115,7 +115,42 @@ public class AuthService(IUserRepository users, ISessionRepository sessions, Jwt
         }
         return await sessions.GetAllSessionsAsync(userId);
     }
-    
+
+    public async Task<string> GenerateMagicTokenAsync(HttpContext context,bool remember=false)
+    {
+        var token = Guid.NewGuid().ToString();
+        if (!JwtService.GetUserIdFromHttpContext(context, out var userId))
+        {
+            throw DomainException.InvalidAuthToken;
+        }
+
+        var userInfo = new MagicDTO
+        {
+            UserId = userId,
+            Remember = remember
+        };
+
+        await userCache.CacheMagicTokenAsync(token, userInfo);
+        return token;
+    }
+
+    public async Task<TokensDTO> MagicLoginAsync(MagicLoginRequest request,SessionConnectionInfoDTO info)
+    {
+        var magicDto = await userCache.UseMagicTokenAsync(request.Token);
+
+        if (magicDto is null)
+        {
+            throw DomainException.InvalidMagicToken;
+        }
+        var user =await userCache.GetCachedUserByIdAsync(magicDto.UserId.ToString())??
+                  await users.GetByIdAsync(magicDto.UserId);
+        if (user == null)
+        { 
+            throw DomainException.InvalidMagicToken;
+        }
+        return await CreateNewSession(user,magicDto.Remember,info,request.Fingerprint);
+    }
+
     private async Task<TokensDTO> CreateNewSession(User user,bool extended,SessionConnectionInfoDTO info, string? fingerprint,Guid? sessionId = null)
     {
         var refreshToken = Guid.NewGuid();

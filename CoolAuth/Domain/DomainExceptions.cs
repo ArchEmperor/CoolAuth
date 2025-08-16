@@ -12,6 +12,8 @@ public class DomainException(string message, HttpStatusCode statusCode) : Except
 
     public static DomainException InvalidAuthToken =>
         new ("Invalid authentication token", HttpStatusCode.Unauthorized);
+    public static DomainException InvalidMagicToken =>
+        new ("Invalid or expired magic link", HttpStatusCode.Unauthorized);
     public static DomainException SessionExpired =>
         new ("Session already expired", HttpStatusCode.Unauthorized);
 
